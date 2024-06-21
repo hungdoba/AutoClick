@@ -1,0 +1,15 @@
+﻿<Window x:Class="AutoClick.CaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CaptureWindow"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        WindowState="Maximized"
+        Topmost="True"
+        >
+    <Grid>
+        <Canvas Name="SelectionCanvas" MouseMove="SelectionCanvas_MouseMove" Background="Transparent"/>
+    </Grid>
+</Window>
