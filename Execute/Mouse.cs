@@ -137,7 +137,12 @@ namespace AutoClick.Execute
                     return null;
                 }
 
-                return new System.Drawing.Point(maxLoc.X, maxLoc.Y);
+                System.Drawing.Point templateCenter = new System.Drawing.Point(
+                    maxLoc.X + template.Width / 2,
+                    maxLoc.Y + template.Height / 2
+                );
+
+                return templateCenter;
             }
         }
 

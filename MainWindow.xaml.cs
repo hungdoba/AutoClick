@@ -1,101 +1,166 @@
-﻿using Gma.System.MouseKeyHook;
+﻿using AutoClick.Utils;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Forms;
 
 namespace AutoClick
 {
     public partial class MainWindow : Window
     {
-        private readonly string _logFilePath = @"C:\Users\70830717\Desktop\autoclick.json";
-        private Boolean isMouseDrag = false;
-        private IKeyboardMouseEvents? _events;
+        private bool _isWatching = false;
         private long _previousActionTimestamp = 0;
-        private System.Windows.Point _startPoint;
-
         public ObservableCollection<Models.Action> Actions;
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr WindowFromPoint(System.Drawing.Point p);
+        private readonly IniFile _iniFile;
+        private const string Section = "MainWindowPosition";
+        private const string IniFileName = "setting.ini";
+        private MouseKeyHookHandler hookHandler;
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
-
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetWindowRect(IntPtr hwnd, ref RECT rect);
-
-        private const uint GA_ROOT = 2;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
-        {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
-        }
+        private CancellationTokenSource cancellationTokenSource;
 
         public MainWindow()
         {
             InitializeComponent();
             Actions = new ObservableCollection<Models.Action>();
             DgActions.ItemsSource = Actions;
+            DeleteTempImage();
+            string iniFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, IniFileName);
+            _iniFile = new IniFile(iniFilePath);
+
+            hookHandler = new MouseKeyHookHandler(Actions);
         }
 
         private void MainWindow_Closing(object sender, CancelEventArgs e)
         {
-            Unsubscribe();
+            hookHandler.Unsubscribe();
+            SaveWindowPosition();
         }
 
-        private void SubscribeGlobal()
+        private void SaveWindowPosition()
         {
-            Unsubscribe();
-            Subscribe(Hook.GlobalEvents());
+            _iniFile.WriteValue(Section, "Left", Left.ToString());
+            _iniFile.WriteValue(Section, "Top", Top.ToString());
+            _iniFile.WriteValue(Section, "Width", Width.ToString());
+            _iniFile.WriteValue(Section, "Height", Height.ToString());
         }
 
-        private void Subscribe(IKeyboardMouseEvents events)
+        public static void DeleteTempImage()
         {
-            _events = events;
-            _events.KeyPress += HookManager_KeyPress!;
-            _events.MouseClick += OnMouseClick!;
-            _events.MouseDoubleClick += OnMouseDoubleClick!;
-            _events.MouseDragStarted += OnMouseDragStarted!;
-            _events.MouseDragFinished += OnMouseDragFinished!;
-            _events.MouseWheelExt += HookManager_MouseWheelExt!;
-            _events.MouseHWheelExt += HookManager_MouseHWheelExt!;
-            _events.MouseDownExt += HookManager_Suppress!;
+            var imgFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "_img");
+            try
+            {
+                if (Directory.Exists(imgFolder))
+                {
+                    string[] files = Directory.GetFiles(imgFolder);
+                    foreach (string file in files)
+                    {
+                        File.Delete(file);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show($"Delete temporary image error: {e.Message}");
+            }
         }
 
-        private void Unsubscribe()
+        private void BtnOpenScript_Click(object sender, RoutedEventArgs e)
         {
-            if (_events == null) return;
+            var recordFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "record");
+            OpenFileDialog openFileDialog = new()
+            {
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                InitialDirectory = recordFolder,
+                Title = "Select a JSON File"
+            };
 
-            _events.KeyPress -= HookManager_KeyPress!;
-            _events.MouseClick -= OnMouseClick!;
-            _events.MouseDoubleClick -= OnMouseDoubleClick!;
-            _events.MouseDragStarted -= OnMouseDragStarted!;
-            _events.MouseDragFinished -= OnMouseDragFinished!;
-            _events.MouseWheelExt -= HookManager_MouseWheelExt!;
-            _events.MouseHWheelExt -= HookManager_MouseHWheelExt!;
-            _events.MouseDownExt -= HookManager_Suppress!;
+            // Show OpenFileDialog
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    string json = File.ReadAllText(openFileDialog.FileName);
 
-            _events.Dispose();
-            _events = null;
+                    var actions = JsonConvert.DeserializeObject<ObservableCollection<Models.Action>>(json);
+
+                    Actions.Clear();
+
+                    if (actions != null)
+                    {
+                        foreach (var action in actions)
+                        {
+                            Actions.Add(action);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error loading JSON file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
         }
 
-
-
-        // Add Action
-        public void AddAction(string type, string button, System.Drawing.Point? position = null, string? data = null, bool ignoreWait = false)
+        private void BtnSaveScript_Click(object sender, RoutedEventArgs e)
         {
-            // Add action include add wait
+            var recordFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "record");
+            var imgFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "img");
+
+            if (!Directory.Exists(recordFolder))
+            {
+                Directory.CreateDirectory(recordFolder);
+            }
+            if (!Directory.Exists(imgFolder))
+            {
+                Directory.CreateDirectory(imgFolder);
+            }
+
+            foreach (Models.Action action in Actions)
+            {
+                if (action.Type == "mouse_template" && action.Data != null)
+                {
+                    string img = action.Data.ToString().Replace("_img", "img");
+                    File.Copy(action.Data, img, true);
+                    action.Data = img;
+                }
+            }
+
+            string json = JsonConvert.SerializeObject(Actions, Formatting.Indented);
+            // Open the save file dialog
+            SaveFileDialog saveFileDialog = new()
+            {
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                InitialDirectory = recordFolder,
+                FileName = "1.json"
+            };
+
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                File.WriteAllText(saveFileDialog.FileName, json);
+            }
+        }
+
+        private void BtnResetScript_Click(object sender, RoutedEventArgs e)
+        {
+            Actions.Clear();
+            _previousActionTimestamp = 0;
+        }
+
+        private void DgActions_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Delete)
+            {
+                foreach (Models.Action action in DgActions.SelectedItems)
+                {
+                    Actions.Remove(action);
+                }
+            }
+        }
+
+        public void AddAction(string type, string? button, System.Drawing.Point? position = null, string? data = null, bool ignoreWait = false)
+        {
             long timeNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (_previousActionTimestamp != 0 && !ignoreWait)
             {
@@ -109,250 +174,290 @@ namespace AutoClick
             DgActions.ScrollIntoView(mouseAction);
         }
 
-        // Event handle
-        private void HookManager_Suppress(object? sender, MouseEventExtArgs e)
+        public void ResetActionsExecuteSucceeded()
         {
-            if (e.Button == MouseButtons.Right && !IsMouseEventInApp(e))
+            foreach (Models.Action action in Actions)
             {
-                AddAction("mouse_click", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y));
-                e.Handled = true;
+                action.ExecuteSucceeded = null;
+            }
+            DgActions.Items.Refresh();
+            DgActions.UpdateLayout();
+        }
+
+        private void ToolBar_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Left += e.HorizontalChange;
+            Top += e.VerticalChange;
+        }
+
+        private void BtnToggleRecord_Click(object sender, RoutedEventArgs e)
+        {
+            if (BtnToggleRecord.IsChecked == true)
+            {
+                StartRecording();
+            }
+            else
+            {
+                StopRecording();
             }
         }
 
-        private void HookManager_KeyPress(object? sender, KeyPressEventArgs e)
+        private void StartRecording()
         {
-            if (!IsMouseEventInApp(e))
+            hookHandler.SubscribeGlobal();
+            _isWatching = true;
+            BtnToggleRecord.IsChecked = true;
+        }
+
+        private void StopRecording()
+        {
+            hookHandler.Unsubscribe();
+            _isWatching = false;
+            BtnToggleRecord.IsChecked = false;
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            LoadWindowPosition();
+        }
+
+        private void LoadWindowPosition()
+        {
+            var left = _iniFile.ReadValue(Section, "Left", "0");
+            var top = _iniFile.ReadValue(Section, "Top", "0");
+            var width = _iniFile.ReadValue(Section, "Width", "388");
+            var height = _iniFile.ReadValue(Section, "Height", "56");
+
+            Left = double.Parse(left);
+            Top = double.Parse(top);
+            Width = double.Parse(width);
+            Height = double.Parse(height);
+        }
+
+        private void BtnWindowMinimize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void BtnWindowMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized)
             {
-                AddAction("key_press", e.KeyChar.ToString());
+                WindowState = WindowState.Normal;
+            }
+            else
+            {
+                WindowState = WindowState.Maximized;
             }
         }
 
-        private void OnMouseClick(object? sender, MouseEventArgs e)
+        private void BtnWindowClose_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsMouseEventInApp(e) && !isMouseDrag)
+            Close();
+        }
+
+        private void ToolBarTray_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            DragMove();
+        }
+
+        private void BtnToggleScreenShot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isWatching)
             {
-                bool isCtrlPressed = (System.Windows.Forms.Control.ModifierKeys & Keys.Control) == Keys.Control;
-                if (isCtrlPressed && e.Button == MouseButtons.Left)
+                hookHandler.Unsubscribe();
+                CaptureWindow captureWindow = new();
+                captureWindow.ShowDialog();
+                string? savedFilePath = captureWindow.SavedFilePath;
+
+                if (!string.IsNullOrEmpty(savedFilePath))
                 {
-                    string templatePath = CaptureScreenArea(e.X, e.Y, 100, 100);
-                    AddAction("mouse_template", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y), templatePath);
-                }
-                else
-                {
-                    AddAction("mouse_click", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y));
-                }
-            }
-        }
-        private void OnMouseDoubleClick(object? sender, MouseEventArgs e)
-        {
-            if (!IsMouseEventInApp(e))
-            {
-                // Remove event first click
-                Actions.Remove(Actions.Last());
-                AddAction("mouse_double", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y), null, true);
-            }
-        }
-
-        private void OnMouseDragStarted(object? sender, MouseEventArgs e)
-        {
-            if (!IsMouseEventInApp(e))
-            {
-                isMouseDrag = true;
-                AddAction("mouse_drag", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y));
-            }
-        }
-
-        private void OnMouseDragFinished(object? sender, MouseEventArgs e)
-        {
-            if (!IsMouseEventInApp(e))
-            {
-                isMouseDrag = false;
-                AddAction("mouse_drop", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y));
-            }
-        }
-
-        private void HookManager_MouseWheelExt(object? sender, MouseEventExtArgs e)
-        {
-            if (!IsMouseEventInApp(e))
-            {
-                AddAction("mouse_scroll", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y), e.Delta.ToString());
-                e.Handled = true;
-            }
-        }
-
-        private void HookManager_MouseHWheelExt(object? sender, MouseEventExtArgs e)
-        {
-            if (!IsMouseEventInApp(e))
-            {
-                AddAction("mouse_scroll", e.Button.ToString(), new System.Drawing.Point(e.X, e.Y), e.Delta.ToString());
-                e.Handled = true;
-            }
-        }
-
-
-
-        // Ultils
-        private string CaptureScreenArea(int x, int y, int width, int height)
-        {
-            using (Bitmap bmp = new Bitmap(width, height))
-            {
-                using (Graphics g = Graphics.FromImage(bmp))
-                {
-                    g.CopyFromScreen(x - width / 2, y - height / 2, 0, 0, new System.Drawing.Size(width, height));
-                }
-                string filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"template_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-                bmp.Save(filePath, ImageFormat.Png);
-                string outputPath = filePath.Replace("template", "screen");
-                return filePath;
-            }
-        }
-
-        private bool IsMouseEventInApp(MouseEventArgs e)
-        {
-            var windowPoint = new System.Drawing.Point(e.X, e.Y);
-            IntPtr hwnd = WindowFromPoint(windowPoint);
-            IntPtr rootHwnd = GetAncestor(hwnd, GA_ROOT);
-
-            // Get the application window's handle
-            var windowInteropHelper = new System.Windows.Interop.WindowInteropHelper(this);
-            IntPtr appHwnd = windowInteropHelper.Handle;
-
-            return rootHwnd == appHwnd;
-        }
-
-        private bool IsMouseEventInApp(KeyPressEventArgs e)
-        {
-            // Assuming all key presses within the app should not be logged
-            // This can be more complex if needed to distinguish between different key presses
-            return IsActive; // Only log key presses if the application is not active
-        }
-
-        private void BtnSaveLog_Click(object sender, RoutedEventArgs e)
-        {
-            // Serialize actions to JSON
-            string json = JsonConvert.SerializeObject(Actions, Formatting.Indented);
-
-            // Write JSON to file
-            File.WriteAllText(_logFilePath, json);
-        }
-
-        private void LbActions_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Delete)
-            {
-                foreach (Models.Action action in DgActions.SelectedItems.Cast<Models.Action>().ToList())
-                {
-                    Actions.Remove(action);
+                    Execute.Mouse.Click.Template(savedFilePath);
+                    AddAction("mouse_template", null, null, savedFilePath);
                 }
             }
+            BtnToggleScreenShot.IsChecked = false;
         }
 
-        private void BtnExecute_Click(object sender, RoutedEventArgs e)
+        private async void BtnTogglePlay_Click(object sender, RoutedEventArgs e)
         {
-            Thread.Sleep(1000);
-            Execute.Mouse.Click.Template(@"C:\Users\70830717\Desktop\template_20240621_160357.png");
-            //Thread.Sleep(1000);
-            //Execute.Keyboard.Type("Hello, world!");
-
-            //Execute.Mouse.Scroll(-120);
-            //Thread.Sleep(1000);
-            //Execute.Mouse.Scroll(120);
-            // Start dragging from (1863, 43)
-            //Execute.Mouse.Drag.Start(1869, 34);
-
-            // End dragging at (1563, 143)
-            //Execute.Mouse.Drag.End(1651, 376);
-
-            //if (Actions.Count() == 0)
-            //    return;
-
-            //Unsubscribe();
-            //foreach (Models.Action action in Actions)
-            //{
-            //    switch (action.Type)
-            //    {
-            //        case "mouse_click":
-            //            switch (action.Button)
-            //            {
-            //                case "Left":
-            //                    System.Windows.MessageBox.Show("Click Left");
-            //                    break;
-            //                case "Middle":
-            //                    System.Windows.MessageBox.Show("Click Middle");
-            //                    break;
-            //                case "Right":
-            //                    System.Windows.MessageBox.Show("Click Right");
-            //                    break;
-            //            }
-            //            break;
-            //        case "mouse_double":
-            //            System.Windows.MessageBox.Show("Double Click");
-            //            break;
-            //        case "mouse_drag":
-            //            System.Windows.MessageBox.Show("Drag");
-            //            break;
-            //        case "mouse_drop":
-            //            System.Windows.MessageBox.Show("Drop");
-            //            break;
-            //        case "mouse_scroll":
-            //            System.Windows.MessageBox.Show("Scroll");
-            //            break;
-            //        case "mouse_template":
-            //            System.Windows.MessageBox.Show("Click Template");
-            //            break;
-            //        case "key_press":
-            //            System.Windows.MessageBox.Show("Key press");
-            //            break;
-            //        case "wait":
-            //            System.Windows.MessageBox.Show("Wait");
-            //            break;
-            //        default:
-            //            return;
-            //    }
-            //}
-        }
-
-        private void BtnReadFile_Click(object sender, RoutedEventArgs e)
-        {
-            // Read the entire file content as a string
-            string json = File.ReadAllText(_logFilePath);
-
-            // Deserialize JSON string to a list of Action objects
-            var actionsList = JsonConvert.DeserializeObject<List<Models.Action>>(json);
-
-            Actions.Clear();
-            // Convert list to ObservableCollection
-            foreach (var action in actionsList)
+            if (BtnTogglePlay.IsChecked == true)
             {
-                Actions.Add(action);
+                if (Actions.Count == 0)
+                    return;
+
+                if (!int.TryParse(CbExecuteTimes.Text, out int executeTimes) || executeTimes < 1)
+                {
+                    MessageBox.Show("Recheck the execute times");
+                    return;
+                }
+
+                StopRecording();
+                ResetActionsExecuteSucceeded();
+
+                // Initialize cancellation token source
+                cancellationTokenSource = new CancellationTokenSource();
+
+                hookHandler.Unsubscribe();
+                int waitTimeDrop = 0;
+                bool isDrag = false;
+
+                for (int i = 0; i < executeTimes; i++)
+                {
+                    foreach (Models.Action action in Actions)
+                    {
+                        // Check if cancellation has been requested
+                        if (cancellationTokenSource.Token.IsCancellationRequested)
+                        {
+                            // Clean up and return if cancellation requested
+                            hookHandler.SubscribeGlobal(); // Subscribe back to global events
+                            return;
+                        }
+
+                        bool isExecuteSucceeded = true;
+
+                        //switch (action.Type)
+                        //{
+                        //    case "mouse_click":
+                        //        if (action.Position == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        switch (action.Button)
+                        //        {
+                        //            case "Left":
+                        //                await Task.Run(() => Execute.Mouse.Click.Left(action.Position.Value.X, action.Position.Value.Y));
+                        //                break;
+                        //            case "Middle":
+                        //                await Task.Run(() => Execute.Mouse.Click.Middle(action.Position.Value.X, action.Position.Value.Y));
+                        //                break;
+                        //            case "Right":
+                        //                await Task.Run(() => Execute.Mouse.Click.Right(action.Position.Value.X, action.Position.Value.Y));
+                        //                break;
+                        //        }
+                        //        break;
+                        //    case "mouse_double":
+                        //        if (action.Position == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        await Task.Run(() => Execute.Mouse.Click.Double(action.Position.Value.X, action.Position.Value.Y));
+                        //        break;
+                        //    case "mouse_drag":
+                        //        if (action.Position == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        await Task.Run(() =>
+                        //        {
+                        //            Execute.Mouse.Drag.Start(action.Position.Value.X, action.Position.Value.Y);
+                        //        });
+                        //        isDrag = true;
+                        //        break;
+                        //    case "mouse_drop":
+                        //        if (action.Position == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        if (isDrag)
+                        //        {
+                        //            await Task.Run(() => Execute.Mouse.Drag.End(action.Position.Value.X, action.Position.Value.Y, waitTimeDrop));
+                        //            isDrag = false;
+                        //        }
+                        //        break;
+                        //    case "mouse_scroll":
+                        //        if (action.Data == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        await Task.Run(() => Execute.Mouse.Scroll(int.Parse(action.Data)));
+                        //        break;
+                        //    case "mouse_template":
+                        //        if (action.Data == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        await Task.Run(() => Execute.Mouse.Click.Template(action.Data));
+                        //        break;
+                        //    case "key_press":
+                        //        if (action.Button == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        await Task.Run(() => Execute.Keyboard.Type(action.Button));
+                        //        break;
+                        //    case "wait":
+                        //        if (action.Data == null)
+                        //        {
+                        //            isExecuteSucceeded = false;
+                        //            break;
+                        //        }
+                        //        if (isDrag)
+                        //        {
+                        //            waitTimeDrop = int.Parse(action.Data);
+                        //        }
+                        //        else
+                        //        {
+                        //            await Task.Run(() => System.Threading.Thread.Sleep(int.Parse(action.Data)));
+                        //        }
+                        //        break;
+                        //    default:
+                        //        return;
+                        //}
+
+                        action.ExecuteSucceeded = isExecuteSucceeded;
+                        DgActions.Items.Refresh();
+                        DgActions.UpdateLayout();
+                        DgActions.ScrollIntoView(action);
+
+                        await Task.Run(() => Thread.Sleep(500));
+
+                        Random random = new Random();
+                        bool randomBool = random.Next(2) == 1;
+                        if (randomBool)
+                        {
+                            action.ExecuteSucceeded = false;
+                            DgActions.Items.Refresh();
+                            DgActions.UpdateLayout();
+                        }
+                    }
+
+                    CbExecuteTimes.Text = i.ToString();
+                    ResetActionsExecuteSucceeded();
+                }
+                hookHandler.SubscribeGlobal();
+                BtnTogglePlay.IsChecked = false;
+            }
+            else
+            {
+                cancellationTokenSource?.Cancel();
             }
         }
 
-        private void Subscribe_Click(object sender, RoutedEventArgs e)
+        private void BtnToggleExpand_Click(object sender, RoutedEventArgs e)
         {
-
-        }
-
-        private void Unsubscribe_Click(object sender, RoutedEventArgs e)
-        {
-            Unsubscribe();
-        }
-
-        private void BtnSubscribe_Click(object sender, RoutedEventArgs e)
-        {
-            SubscribeGlobal();
-        }
-
-        private void BtnClear_Click(object sender, RoutedEventArgs e)
-        {
-            Actions.Clear();
-            _previousActionTimestamp = 0;
-        }
-
-        private void BtnCapture_Click(object sender, RoutedEventArgs e)
-        {
-            CaptureWindow captureWindow = new CaptureWindow();
-            captureWindow.ShowDialog();
+            if (BtnToggleExpand.IsChecked == true)
+            {
+                Width = 610;
+                Height = 610;
+            }
+            else
+            {
+                Width = 610;
+                Height = 56;
+            }
         }
     }
 }
