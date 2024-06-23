@@ -1,4 +1,5 @@
-﻿using Gma.System.MouseKeyHook;
+﻿using AutoClick.Models;
+using Gma.System.MouseKeyHook;
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -38,8 +39,8 @@ namespace AutoClick.Utils
             _events.MouseDoubleClick += OnMouseDoubleClick!;
             _events.MouseDragStarted += OnMouseDragStarted!;
             _events.MouseDragFinished += OnMouseDragFinished!;
-            _events.MouseWheelExt += HookManager_MouseWheelExt!;
-            _events.MouseHWheelExt += HookManager_MouseHWheelExt!;
+            _events.MouseWheelExt += HookManager_MouseWheel!;
+            _events.MouseHWheelExt += HookManager_MouseHWheel!;
             _events.MouseDownExt += HookManager_Suppress!;
         }
 
@@ -52,8 +53,8 @@ namespace AutoClick.Utils
             _events.MouseDoubleClick -= OnMouseDoubleClick!;
             _events.MouseDragStarted -= OnMouseDragStarted!;
             _events.MouseDragFinished -= OnMouseDragFinished!;
-            _events.MouseWheelExt -= HookManager_MouseWheelExt!;
-            _events.MouseHWheelExt -= HookManager_MouseHWheelExt!;
+            _events.MouseWheelExt -= HookManager_MouseWheel!;
+            _events.MouseHWheelExt -= HookManager_MouseHWheel!;
             _events.MouseDownExt -= HookManager_Suppress!;
 
             _events.Dispose();
@@ -64,7 +65,7 @@ namespace AutoClick.Utils
         {
             if (e.Button == MouseButtons.Right && !IsMouseEventInApp(e))
             {
-                AddAction("mouse_click", e.Button.ToString(), new Point(e.X, e.Y));
+                AddAction("mouse_click", e.Button.ToString(), new Position(e.X, e.Y));
                 e.Handled = true;
             }
         }
@@ -81,7 +82,7 @@ namespace AutoClick.Utils
         {
             if (!IsMouseEventInApp(e) && !isMouseDrag)
             {
-                AddAction("mouse_click", e.Button.ToString(), new Point(e.X, e.Y));
+                AddAction("mouse_click", e.Button.ToString(), new Position(e.X, e.Y));
             }
         }
 
@@ -90,7 +91,7 @@ namespace AutoClick.Utils
             if (!IsMouseEventInApp(e))
             {
                 Actions.Remove(Actions[Actions.Count - 1]);
-                AddAction("mouse_double", e.Button.ToString(), new Point(e.X, e.Y), null, true);
+                AddAction("mouse_double", e.Button.ToString(), new Position(e.X, e.Y), null, true);
             }
         }
 
@@ -99,7 +100,7 @@ namespace AutoClick.Utils
             if (!IsMouseEventInApp(e))
             {
                 isMouseDrag = true;
-                AddAction("mouse_drag", e.Button.ToString(), new Point(e.X, e.Y));
+                AddAction("mouse_drag", e.Button.ToString(), new Position(e.X, e.Y));
             }
         }
 
@@ -108,25 +109,23 @@ namespace AutoClick.Utils
             if (!IsMouseEventInApp(e))
             {
                 isMouseDrag = false;
-                AddAction("mouse_drop", e.Button.ToString(), new Point(e.X, e.Y));
+                AddAction("mouse_drop", e.Button.ToString(), new Position(e.X, e.Y));
             }
         }
 
-        private void HookManager_MouseWheelExt(object? sender, MouseEventExtArgs e)
+        private void HookManager_MouseWheel(object? sender, MouseEventExtArgs e)
         {
             if (!IsMouseEventInApp(e))
             {
-                AddAction("mouse_scroll", e.Button.ToString(), new Point(e.X, e.Y), e.Delta.ToString());
-                e.Handled = true;
+                AddAction("mouse_scroll", e.Button.ToString(), new Position(e.X, e.Y), e.Delta.ToString());
             }
         }
 
-        private void HookManager_MouseHWheelExt(object? sender, MouseEventExtArgs e)
+        private void HookManager_MouseHWheel(object? sender, MouseEventExtArgs e)
         {
             if (!IsMouseEventInApp(e))
             {
-                AddAction("mouse_scroll", e.Button.ToString(), new Point(e.X, e.Y), e.Delta.ToString());
-                e.Handled = true;
+                AddAction("mouse_scroll", e.Button.ToString(), new Position(e.X, e.Y), e.Delta.ToString());
             }
         }
 
@@ -147,7 +146,7 @@ namespace AutoClick.Utils
             return System.Windows.Application.Current.MainWindow.IsActive;
         }
 
-        private void AddAction(string type, string button, Point? point = null, string? delta = null, bool isDoubleClick = false)
+        private void AddAction(string type, string button, Position? point = null, string? delta = null, bool isDoubleClick = false)
         {
             var mainWindow = (MainWindow)System.Windows.Application.Current.MainWindow;
             mainWindow.AddAction(type, button, point, delta, isDoubleClick);

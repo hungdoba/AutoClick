@@ -1,4 +1,5 @@
-﻿using AutoClick.Utils;
+﻿using AutoClick.Models;
+using AutoClick.Utils;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 using System.Collections.ObjectModel;
@@ -19,7 +20,7 @@ namespace AutoClick
         private const string IniFileName = "setting.ini";
         private MouseKeyHookHandler hookHandler;
 
-        private CancellationTokenSource cancellationTokenSource;
+        private CancellationTokenSource? cancellationTokenSource;
 
         public MainWindow()
         {
@@ -105,6 +106,7 @@ namespace AutoClick
 
         private void BtnSaveScript_Click(object sender, RoutedEventArgs e)
         {
+            StopRecording();
             var recordFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "record");
             var imgFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "img");
 
@@ -125,6 +127,7 @@ namespace AutoClick
                     File.Copy(action.Data, img, true);
                     action.Data = img;
                 }
+                action.ExecuteSucceeded = null;
             }
 
             string json = JsonConvert.SerializeObject(Actions, Formatting.Indented);
@@ -133,7 +136,7 @@ namespace AutoClick
             {
                 Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
                 InitialDirectory = recordFolder,
-                FileName = "1.json"
+                FileName = "temp.json"
             };
 
             if (saveFileDialog.ShowDialog() == true)
@@ -159,15 +162,16 @@ namespace AutoClick
             }
         }
 
-        public void AddAction(string type, string? button, System.Drawing.Point? position = null, string? data = null, bool ignoreWait = false)
+        public void AddAction(string type, string? button, Position? position = null, string? data = null, bool ignoreWait = false)
         {
             long timeNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            long waitTime = 1000;
             if (_previousActionTimestamp != 0 && !ignoreWait)
             {
-                long waitTime = timeNow - _previousActionTimestamp;
-                var waitAction = new Models.Action("wait", null, null, waitTime.ToString());
-                Actions.Add(waitAction);
+                waitTime = timeNow - _previousActionTimestamp;
             }
+            var waitAction = new Models.Action("wait", null, null, waitTime.ToString());
+            Actions.Add(waitAction);
             _previousActionTimestamp = timeNow;
             var mouseAction = new Models.Action(type, button, position, data);
             Actions.Add(mouseAction);
@@ -230,7 +234,7 @@ namespace AutoClick
         {
             var left = _iniFile.ReadValue(Section, "Left", "0");
             var top = _iniFile.ReadValue(Section, "Top", "0");
-            var width = _iniFile.ReadValue(Section, "Width", "388");
+            var width = _iniFile.ReadValue(Section, "Width", "340");
             var height = _iniFile.ReadValue(Section, "Height", "56");
 
             Left = double.Parse(left);
@@ -239,12 +243,237 @@ namespace AutoClick
             Height = double.Parse(height);
         }
 
-        private void BtnWindowMinimize_Click(object sender, RoutedEventArgs e)
+
+        private void ToolBarTray_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            DragMove();
+        }
+
+        private void BtnToggleScreenShot_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isWatching)
+            {
+                StopRecording();
+                CaptureWindow captureWindow = new();
+                captureWindow.ShowDialog();
+                string? savedFilePath = captureWindow.SavedFilePath;
+                Position? point = captureWindow.StartPoint;
+
+                if (!string.IsNullOrEmpty(savedFilePath))
+                {
+                    Execute.Mouse.Click.Template(savedFilePath);
+                    AddAction("mouse_template", null, point, savedFilePath);
+                }
+                StartRecording();
+            }
+            BtnToggleScreenShot.IsChecked = false;
+        }
+
+        //private void BtnToggleScreenCheck_Click(object sender, RoutedEventArgs e)
+        //{
+        //    if (_isWatching)
+        //    {
+        //        hookHandler.Unsubscribe();
+        //        CaptureWindow captureWindow = new();
+        //        captureWindow.ShowDialog();
+        //        string? savedFilePath = captureWindow.SavedFilePath;
+        //        Position? point = captureWindow.StartPoint;
+
+        //        if (!string.IsNullOrEmpty(savedFilePath) && point != null)
+        //        {
+        //            AddAction("screen_check", null, point, savedFilePath);
+        //        }
+        //    }
+        //    BtnToggleScreenCheck.IsChecked = false;
+        //}
+
+        private async void BtnTogglePlay_Click(object sender, RoutedEventArgs e)
+        {
+            if (BtnTogglePlay.IsChecked == true)
+            {
+                if (Actions.Count == 0)
+                {
+
+                    BtnTogglePlay.IsChecked = false;
+                    return;
+                }
+
+                if (!int.TryParse(CbExecuteTimes.Text, out int executeTimes))
+                {
+                    MessageBox.Show("Recheck the execute times");
+                    BtnTogglePlay.IsChecked = false;
+                    return;
+                }
+
+                if (executeTimes == 0)
+                {
+                    executeTimes = 1;
+                }
+
+                StopRecording();
+                ResetActionsExecuteSucceeded();
+
+                // Initialize cancellation token source
+                cancellationTokenSource = new CancellationTokenSource();
+
+                int waitTimeDrop = 0;
+                bool isDrag = false;
+
+                for (int i = executeTimes - 1; i >= 0; i--)
+                {
+                    foreach (Models.Action action in Actions)
+                    {
+                        if (cancellationTokenSource.Token.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
+                        bool isExecuteSucceeded = true;
+                        action.ExecuteSucceeded = isExecuteSucceeded;
+                        DgActions.Items.Refresh();
+                        DgActions.UpdateLayout();
+                        DgActions.ScrollIntoView(action);
+
+                        switch (action.Type)
+                        {
+                            case "mouse_click":
+                                if (action.Position == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                switch (action.Button)
+                                {
+                                    case "Left":
+                                        await Task.Run(() => Execute.Mouse.Click.Left(action.Position));
+                                        break;
+                                    case "Middle":
+                                        await Task.Run(() => Execute.Mouse.Click.Middle(action.Position));
+                                        break;
+                                    case "Right":
+                                        await Task.Run(() => Execute.Mouse.Click.Right(action.Position));
+                                        break;
+                                }
+                                break;
+                            case "mouse_double":
+                                if (action.Position == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                await Task.Run(() => Execute.Mouse.Click.Double(action.Position));
+                                break;
+                            case "mouse_drag":
+                                if (action.Position == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                await Task.Run(() =>
+                                {
+                                    Execute.Mouse.Drag.Start(action.Position.X, action.Position.Y);
+                                });
+                                isDrag = true;
+                                break;
+                            case "mouse_drop":
+                                if (action.Position == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                if (isDrag)
+                                {
+                                    await Task.Run(() => Execute.Mouse.Drag.End(action.Position.X, action.Position.Y, waitTimeDrop));
+                                    isDrag = false;
+                                }
+                                break;
+                            case "mouse_scroll":
+                                if (action.Data == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                await Task.Run(() => Execute.Mouse.Scroll(int.Parse(action.Data)));
+                                break;
+                            case "mouse_template":
+                                if (action.Data == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                await Task.Run(() => Execute.Mouse.Click.Template(action.Data));
+                                break;
+                            case "key_press":
+                                if (action.Button == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                await Task.Run(() => Execute.Keyboard.Type(action.Button));
+                                break;
+                            case "wait":
+                                if (action.Data == null)
+                                {
+                                    isExecuteSucceeded = false;
+                                    break;
+                                }
+                                if (isDrag)
+                                {
+                                    waitTimeDrop = int.Parse(action.Data);
+                                }
+                                else
+                                {
+                                    await Task.Run(() => System.Threading.Thread.Sleep(int.Parse(action.Data)));
+                                }
+                                break;
+                            default:
+                                return;
+                        }
+
+                        if (!isExecuteSucceeded)
+                        {
+                            action.ExecuteSucceeded = isExecuteSucceeded;
+                            DgActions.Items.Refresh();
+                            DgActions.UpdateLayout();
+                        }
+                    }
+
+                    CbExecuteTimes.Text = i.ToString();
+                    ResetActionsExecuteSucceeded();
+                }
+            }
+            else
+            {
+                cancellationTokenSource?.Cancel();
+            }
+            BtnTogglePlay.IsChecked = false;
+        }
+
+        private void BtnToggleExpand_Click(object sender, RoutedEventArgs e)
+        {
+            if (BtnToggleExpand.IsChecked == true)
+            {
+                Width = 510;
+                Height = 600;
+            }
+            else
+            {
+                Width = 510;
+                Height = 56;
+            }
+        }
+
+        private void CloseApp_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            Close();
+        }
+
+        private void MinimizeApp_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             WindowState = WindowState.Minimized;
         }
 
-        private void BtnWindowMaximize_Click(object sender, RoutedEventArgs e)
+        private void MaximizeApp_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             if (WindowState == WindowState.Maximized)
             {
@@ -256,208 +485,15 @@ namespace AutoClick
             }
         }
 
-        private void BtnWindowClose_Click(object sender, RoutedEventArgs e)
+        private void PackIcon_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
         {
-            Close();
+            System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Hand;
         }
 
-        private void ToolBarTray_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        private void PackIcon_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
         {
-            DragMove();
+            System.Windows.Input.Mouse.OverrideCursor = null;
         }
 
-        private void BtnToggleScreenShot_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isWatching)
-            {
-                hookHandler.Unsubscribe();
-                CaptureWindow captureWindow = new();
-                captureWindow.ShowDialog();
-                string? savedFilePath = captureWindow.SavedFilePath;
-
-                if (!string.IsNullOrEmpty(savedFilePath))
-                {
-                    Execute.Mouse.Click.Template(savedFilePath);
-                    AddAction("mouse_template", null, null, savedFilePath);
-                }
-            }
-            BtnToggleScreenShot.IsChecked = false;
-        }
-
-        private async void BtnTogglePlay_Click(object sender, RoutedEventArgs e)
-        {
-            if (BtnTogglePlay.IsChecked == true)
-            {
-                if (Actions.Count == 0)
-                    return;
-
-                if (!int.TryParse(CbExecuteTimes.Text, out int executeTimes) || executeTimes < 1)
-                {
-                    MessageBox.Show("Recheck the execute times");
-                    return;
-                }
-
-                StopRecording();
-                ResetActionsExecuteSucceeded();
-
-                // Initialize cancellation token source
-                cancellationTokenSource = new CancellationTokenSource();
-
-                hookHandler.Unsubscribe();
-                int waitTimeDrop = 0;
-                bool isDrag = false;
-
-                for (int i = 0; i < executeTimes; i++)
-                {
-                    foreach (Models.Action action in Actions)
-                    {
-                        // Check if cancellation has been requested
-                        if (cancellationTokenSource.Token.IsCancellationRequested)
-                        {
-                            // Clean up and return if cancellation requested
-                            hookHandler.SubscribeGlobal(); // Subscribe back to global events
-                            return;
-                        }
-
-                        bool isExecuteSucceeded = true;
-
-                        //switch (action.Type)
-                        //{
-                        //    case "mouse_click":
-                        //        if (action.Position == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        switch (action.Button)
-                        //        {
-                        //            case "Left":
-                        //                await Task.Run(() => Execute.Mouse.Click.Left(action.Position.Value.X, action.Position.Value.Y));
-                        //                break;
-                        //            case "Middle":
-                        //                await Task.Run(() => Execute.Mouse.Click.Middle(action.Position.Value.X, action.Position.Value.Y));
-                        //                break;
-                        //            case "Right":
-                        //                await Task.Run(() => Execute.Mouse.Click.Right(action.Position.Value.X, action.Position.Value.Y));
-                        //                break;
-                        //        }
-                        //        break;
-                        //    case "mouse_double":
-                        //        if (action.Position == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        await Task.Run(() => Execute.Mouse.Click.Double(action.Position.Value.X, action.Position.Value.Y));
-                        //        break;
-                        //    case "mouse_drag":
-                        //        if (action.Position == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        await Task.Run(() =>
-                        //        {
-                        //            Execute.Mouse.Drag.Start(action.Position.Value.X, action.Position.Value.Y);
-                        //        });
-                        //        isDrag = true;
-                        //        break;
-                        //    case "mouse_drop":
-                        //        if (action.Position == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        if (isDrag)
-                        //        {
-                        //            await Task.Run(() => Execute.Mouse.Drag.End(action.Position.Value.X, action.Position.Value.Y, waitTimeDrop));
-                        //            isDrag = false;
-                        //        }
-                        //        break;
-                        //    case "mouse_scroll":
-                        //        if (action.Data == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        await Task.Run(() => Execute.Mouse.Scroll(int.Parse(action.Data)));
-                        //        break;
-                        //    case "mouse_template":
-                        //        if (action.Data == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        await Task.Run(() => Execute.Mouse.Click.Template(action.Data));
-                        //        break;
-                        //    case "key_press":
-                        //        if (action.Button == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        await Task.Run(() => Execute.Keyboard.Type(action.Button));
-                        //        break;
-                        //    case "wait":
-                        //        if (action.Data == null)
-                        //        {
-                        //            isExecuteSucceeded = false;
-                        //            break;
-                        //        }
-                        //        if (isDrag)
-                        //        {
-                        //            waitTimeDrop = int.Parse(action.Data);
-                        //        }
-                        //        else
-                        //        {
-                        //            await Task.Run(() => System.Threading.Thread.Sleep(int.Parse(action.Data)));
-                        //        }
-                        //        break;
-                        //    default:
-                        //        return;
-                        //}
-
-                        action.ExecuteSucceeded = isExecuteSucceeded;
-                        DgActions.Items.Refresh();
-                        DgActions.UpdateLayout();
-                        DgActions.ScrollIntoView(action);
-
-                        await Task.Run(() => Thread.Sleep(500));
-
-                        Random random = new Random();
-                        bool randomBool = random.Next(2) == 1;
-                        if (randomBool)
-                        {
-                            action.ExecuteSucceeded = false;
-                            DgActions.Items.Refresh();
-                            DgActions.UpdateLayout();
-                        }
-                    }
-
-                    CbExecuteTimes.Text = i.ToString();
-                    ResetActionsExecuteSucceeded();
-                }
-                hookHandler.SubscribeGlobal();
-                BtnTogglePlay.IsChecked = false;
-            }
-            else
-            {
-                cancellationTokenSource?.Cancel();
-            }
-        }
-
-        private void BtnToggleExpand_Click(object sender, RoutedEventArgs e)
-        {
-            if (BtnToggleExpand.IsChecked == true)
-            {
-                Width = 610;
-                Height = 610;
-            }
-            else
-            {
-                Width = 610;
-                Height = 56;
-            }
-        }
     }
 }

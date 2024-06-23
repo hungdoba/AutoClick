@@ -7,9 +7,9 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="MainWindow"
-    Width="588"
+    Width="488"
     Height="56"
-    MinWidth="200"
+    MinWidth="250"
     MinHeight="56"
     AllowsTransparency="True"
     Closing="MainWindow_Closing"
@@ -42,9 +42,57 @@
 
             <ToolBarTray MouseLeftButtonDown="ToolBarTray_MouseLeftButtonDown">
                 <ToolBar
+                    Padding="0"
                     ClipToBounds="True"
                     Style="{StaticResource MaterialDesignToolBar}"
                     Thumb.DragDelta="ToolBar_DragDelta">
+
+                    <materialDesign:PackIcon
+                        VerticalAlignment="Center"
+                        Foreground="Tomato"
+                        Kind="Record"
+                        MouseEnter="PackIcon_MouseEnter"
+                        MouseLeave="PackIcon_MouseLeave"
+                        MouseLeftButtonUp="CloseApp_Click"
+                        ToolTip="Close" />
+                    <materialDesign:PackIcon
+                        VerticalAlignment="Center"
+                        Foreground="Orange"
+                        Kind="Record"
+                        MouseEnter="PackIcon_MouseEnter"
+                        MouseLeave="PackIcon_MouseLeave"
+                        MouseLeftButtonUp="MinimizeApp_Click"
+                        ToolTip="Minimize" />
+                    <materialDesign:PackIcon
+                        VerticalAlignment="Center"
+                        Foreground="LightGreen"
+                        Kind="Record"
+                        MouseEnter="PackIcon_MouseEnter"
+                        MouseLeave="PackIcon_MouseLeave"
+                        MouseLeftButtonUp="MaximizeApp_Click"
+                        ToolTip="Maximize" />
+                    <ToggleButton
+                        x:Name="BtnToggleExpand"
+                        Click="BtnToggleExpand_Click"
+                        Foreground="White">
+                        <ToggleButton.Style>
+                            <Style TargetType="ToggleButton">
+                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=MenuDown}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=MenuUp}" />
+                                        <Setter Property="ToolTip" Value="Hide Script" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="False">
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=MenuDown}" />
+                                        <Setter Property="ToolTip" Value="Show Script" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ToggleButton.Style>
+                    </ToggleButton>
+
+                    <Separator />
 
                     <ToggleButton
                         x:Name="BtnToggleRecord"
@@ -52,14 +100,14 @@
                         Foreground="White">
                         <ToggleButton.Style>
                             <Style TargetType="ToggleButton">
-                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=Record}" />
+                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=RecordRec}" />
                                 <Style.Triggers>
                                     <Trigger Property="IsChecked" Value="True">
                                         <Setter Property="Content" Value="{materialDesign:PackIcon Kind=Stop}" />
                                         <Setter Property="ToolTip" Value="Stop Record" />
                                     </Trigger>
                                     <Trigger Property="IsChecked" Value="False">
-                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=Record}" />
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=RecordRec}" />
                                         <Setter Property="ToolTip" Value="Start Record" />
                                     </Trigger>
                                 </Style.Triggers>
@@ -72,20 +120,40 @@
                         Foreground="White">
                         <ToggleButton.Style>
                             <Style TargetType="ToggleButton">
-                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=MonitorScreenshot}" />
+                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=SelectSearch}" />
                                 <Style.Triggers>
                                     <Trigger Property="IsChecked" Value="True">
-                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=FitToScreen}" />
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=SelectionMarker}" />
                                         <Setter Property="ToolTip" Value="Stop Record" />
                                     </Trigger>
                                     <Trigger Property="IsChecked" Value="False">
-                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=MonitorScreenshot}" />
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=SelectSearch}" />
                                         <Setter Property="ToolTip" Value="Start Record" />
                                     </Trigger>
                                 </Style.Triggers>
                             </Style>
                         </ToggleButton.Style>
                     </ToggleButton>
+                    <!--<ToggleButton
+                        x:Name="BtnToggleScreenCheck"
+                        Click="BtnToggleScreenCheck_Click"
+                        Foreground="White">
+                        <ToggleButton.Style>
+                            <Style TargetType="ToggleButton">
+                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ImageCheck}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ImagePlus}" />
+                                        <Setter Property="ToolTip" Value="Stop Record" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="False">
+                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ImageCheck}" />
+                                        <Setter Property="ToolTip" Value="Start Record" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ToggleButton.Style>
+                    </ToggleButton>-->
                     <Separator />
 
                     <ComboBox
@@ -146,43 +214,6 @@
                         Click="BtnResetScript_Click"
                         Content="{materialDesign:PackIcon Kind=Autorenew}"
                         ToolTip="Reset Script" />
-
-                    <Separator />
-                    <ToggleButton
-                        x:Name="BtnToggleExpand"
-                        Click="BtnToggleExpand_Click"
-                        Foreground="White">
-                        <ToggleButton.Style>
-                            <Style TargetType="ToggleButton">
-                                <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ChevronDown}" />
-                                <Style.Triggers>
-                                    <Trigger Property="IsChecked" Value="True">
-                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ChevronUp}" />
-                                        <Setter Property="ToolTip" Value="Hide Script" />
-                                    </Trigger>
-                                    <Trigger Property="IsChecked" Value="False">
-                                        <Setter Property="Content" Value="{materialDesign:PackIcon Kind=ChevronDown}" />
-                                        <Setter Property="ToolTip" Value="Show Script" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ToggleButton.Style>
-                    </ToggleButton>
-                    <Button
-                        x:Name="BtnWindowMinimize"
-                        Click="BtnWindowMinimize_Click"
-                        Content="{materialDesign:PackIcon Kind=WindowMinimize}"
-                        ToolTip="Window Minimize" />
-                    <Button
-                        x:Name="BtnWindowMaximize"
-                        Click="BtnWindowMaximize_Click"
-                        Content="{materialDesign:PackIcon Kind=WindowMaximize}"
-                        ToolTip="Window Maximize" />
-                    <Button
-                        x:Name="BtnWindowClose"
-                        Click="BtnWindowClose_Click"
-                        Content="{materialDesign:PackIcon Kind=WindowClose}"
-                        ToolTip="Window Close" />
                 </ToolBar>
             </ToolBarTray>
             <DataGrid
@@ -195,7 +226,7 @@
                 SelectionMode="Extended"
                 SelectionUnit="FullRow">
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Width="2*" Header="Type">
+                    <DataGridTemplateColumn Width="*" Header="Type">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Type}" />
@@ -231,7 +262,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Width="8*" Header="Data">
+                    <DataGridTemplateColumn Width="3*" Header="Data">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Data}" />

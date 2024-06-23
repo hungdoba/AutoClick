@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using AutoClick.Models;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
@@ -13,8 +14,9 @@ namespace AutoClick
         [DllImport("user32.dll")]
         private static extern bool BlockInput(bool fBlockIt);
 
-        private Point startPoint;
         private Rectangle selectionRectangle;
+
+        public Position? StartPoint;
         public string? SavedFilePath { get; private set; }
 
         public CaptureWindow()
@@ -56,9 +58,10 @@ namespace AutoClick
 
         private void Canvas_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            startPoint = e.GetPosition(this);
-            Canvas.SetLeft(selectionRectangle, startPoint.X);
-            Canvas.SetTop(selectionRectangle, startPoint.Y);
+            Point point = e.GetPosition(this);
+            StartPoint = new Position((int)point.X, (int)point.Y);
+            Canvas.SetLeft(selectionRectangle, StartPoint.X);
+            Canvas.SetTop(selectionRectangle, StartPoint.Y);
             selectionRectangle.Width = 0;
             selectionRectangle.Height = 0;
         }
@@ -68,10 +71,10 @@ namespace AutoClick
             if (e.LeftButton == MouseButtonState.Pressed)
             {
                 var pos = e.GetPosition(this);
-                var x = Math.Min(pos.X, startPoint.X);
-                var y = Math.Min(pos.Y, startPoint.Y);
-                var width = Math.Abs(pos.X - startPoint.X);
-                var height = Math.Abs(pos.Y - startPoint.Y);
+                var x = Math.Min(pos.X, StartPoint.X);
+                var y = Math.Min(pos.Y, StartPoint.Y);
+                var width = Math.Abs(pos.X - StartPoint.X);
+                var height = Math.Abs(pos.Y - StartPoint.Y);
                 Canvas.SetLeft(selectionRectangle, x);
                 Canvas.SetTop(selectionRectangle, y);
                 selectionRectangle.Width = width;
@@ -82,11 +85,14 @@ namespace AutoClick
         private void Canvas_MouseUp(object sender, MouseButtonEventArgs e)
         {
             var endPoint = e.GetPosition(this);
-            CaptureSnip(startPoint, endPoint);
+            if (StartPoint != null)
+            {
+                CaptureSnip(StartPoint, endPoint);
+            }
             this.Close();
         }
 
-        private void CaptureSnip(Point start, Point end)
+        private void CaptureSnip(Position start, Point end)
         {
             System.Windows.Forms.Cursor.Position = new System.Drawing.Point(2000, 0);
             this.Hide();

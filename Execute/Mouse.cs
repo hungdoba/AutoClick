@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using AutoClick.Models;
+using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -28,62 +29,65 @@ namespace AutoClick.Execute
 
         internal static class Click
         {
-            static public void Left(int x, int y)
+            static public void Left(Position pos)
             {
                 // Set the cursor position
-                SetCursorPos(x, y);
+                SetCursorPos(pos.X, pos.Y);
+                //Console.WriteLine($"Left click {(uint)pos.X} , {(uint)pos.Y}");
 
                 // Simulate left mouse down and up to perform click
-                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTUP, (uint)pos.X, (uint)pos.Y, 0, 0);
             }
 
-            static public void Right(int x, int y)
+            static public void Right(Position pos)
             {
                 // Set the cursor position
-                SetCursorPos(x, y);
+                SetCursorPos(pos.X, pos.Y);
+                //Console.WriteLine($"Right click {pos}");
 
                 // Simulate right mouse down and up to perform click
-                mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
+                mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_RIGHTUP, (uint)pos.X, (uint)pos.Y, 0, 0);
             }
 
-            static public void Middle(int x, int y)
+            static public void Middle(Position pos)
             {
                 // Set the cursor position
-                SetCursorPos(x, y);
+                SetCursorPos(pos.X, pos.Y);
+                //Console.WriteLine($"Middle click {pos}");
 
                 // Simulate middle mouse down and up to perform click
-                mouse_event(MOUSEEVENTF_MIDDLEDOWN, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_MIDDLEUP, (uint)x, (uint)y, 0, 0);
+                mouse_event(MOUSEEVENTF_MIDDLEDOWN, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_MIDDLEUP, (uint)pos.X, (uint)pos.Y, 0, 0);
             }
 
-            static public void Double(int x, int y)
+            static public void Double(Position pos)
             {
                 // Set the cursor position
-                SetCursorPos(x, y);
+                SetCursorPos(pos.X, pos.Y);
+                //Console.WriteLine($"Double click {pos}");
 
                 // Simulate left mouse double click
-                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
-                mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTUP, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)pos.X, (uint)pos.Y, 0, 0);
+                mouse_event(MOUSEEVENTF_LEFTUP, (uint)pos.X, (uint)pos.Y, 0, 0);
             }
 
 
             static public void Template(string templateImagePath)
             {
-                // Get position
-                System.Drawing.Point? position = GetClickPosition(templateImagePath);
+                Position? position = GetClickPosition(templateImagePath);
                 if (position == null)
                 {
                     return;
                 }
 
-                Left(position.Value.X, position.Value.Y);
+                Left(position);
             }
 
-            public static System.Drawing.Point? GetClickPosition(string templateImagePath)
+            public static Position? GetClickPosition(string templateImagePath)
             {
                 if (!File.Exists(templateImagePath))
                 {
@@ -105,7 +109,7 @@ namespace AutoClick.Execute
                     screenBounds = Rectangle.Union(screenBounds, screen.Bounds);
                 }
 
-                using Bitmap screenImage = new Bitmap(screenBounds.Width, screenBounds.Height, PixelFormat.Format32bppArgb);
+                using Bitmap screenImage = new(screenBounds.Width, screenBounds.Height, PixelFormat.Format32bppArgb);
                 using (Graphics g = Graphics.FromImage(screenImage))
                 {
                     g.CopyFromScreen(screenBounds.Location, System.Drawing.Point.Empty, screenBounds.Size);
@@ -127,7 +131,7 @@ namespace AutoClick.Execute
                     return null;
                 }
 
-                Mat result = new Mat();
+                Mat result = new();
                 Cv2.MatchTemplate(screenMat, template, result, TemplateMatchModes.CCoeffNormed);
                 Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
 
@@ -137,10 +141,20 @@ namespace AutoClick.Execute
                     return null;
                 }
 
-                System.Drawing.Point templateCenter = new System.Drawing.Point(
-                    maxLoc.X + template.Width / 2,
-                    maxLoc.Y + template.Height / 2
-                );
+                Position templateCenter = new(maxLoc.X + template.Width / 2, maxLoc.Y + template.Height / 2);
+
+                // Draw X sign at the template center
+                int lineLength = 20;
+                Cv2.Line(screenMat, new OpenCvSharp.Point(templateCenter.X - lineLength, templateCenter.Y - lineLength),
+                         new OpenCvSharp.Point(templateCenter.X + lineLength, templateCenter.Y + lineLength),
+                         new Scalar(0, 0, 255), 2);
+                Cv2.Line(screenMat, new OpenCvSharp.Point(templateCenter.X + lineLength, templateCenter.Y - lineLength),
+                         new OpenCvSharp.Point(templateCenter.X - lineLength, templateCenter.Y + lineLength),
+                         new Scalar(0, 0, 255), 2);
+
+                // Save the image with the X sign
+                string outputImagePath = templateImagePath.Replace("png", "jpg");
+                Cv2.ImWrite(outputImagePath, screenMat);
 
                 return templateCenter;
             }
